@@ -1,28 +1,58 @@
 import json
 import os
+import re
 import shutil
+import tempfile
 import click
+import git
 from openapi_spec_validator import validate_spec
 
 # Templates for various files
 PACKAGE_JSON_TEMPLATE = """
-{
+{{
   "name": "n8n-nodes-{name}",
   "version": "0.1.0",
   "description": "n8n nodes for {name} API",
-  "main": "./dist/index.js",
-  "scripts": {
-    "build": "tsc && tsc-alias",
-    "dev": "tsc --watch"
-  },
-  "author": "",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n-openapi-node-plugin-generator"
+  ],
   "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^14.0.23",
-    "tsc-alias": "^1.3.7",
-    "typescript": "^4.1.2"
-  }
-}
+  "homepage": "",
+  "author": {{
+    "name": "",
+    "email": ""
+  }},
+  "repository": {{
+    "type": "git",
+    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
+  }},
+  "main": "index.js",
+  "scripts": {{
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json"
+  }},
+  "files": [
+    "dist"
+  ],
+  "n8n": {{
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/{name}.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/{name}/{name}.node.js"
+    ]
+  }},
+  "devDependencies": {dev_dependencies},
+  "peerDependencies": {{
+    "n8n-workflow": "*"
+  }}
+}}
 """
 
 NODE_INDEX_TEMPLATE = """
@@ -106,15 +136,31 @@ def create_node_properties(api_spec):
     return ",".join(properties)
 
 
-def create_plugin_files(api_spec, name, output_dir):
+def load_dev_dependencies(starter_repo_path):
+    with open(os.path.join(starter_repo_path, "package.json"), "r") as file:
+        starter_package = json.load(file)
+    return starter_package.get("devDependencies", {})
+
+
+def clone_starter_repo(temp_dir):
+    repo_url = "https://github.com/n8n-io/n8n-nodes-starter.git"
+    git.Repo.clone_from(repo_url, temp_dir)
+
+
+def create_plugin_files(api_spec, name, output_dir, temp_dir):
     node_properties = create_node_properties(api_spec)
+    dev_dependencies = json.dumps(load_dev_dependencies(temp_dir), indent=4)
 
     # Copy n8n-nodes-starter template
-    shutil.copytree("n8n-nodes-starter", output_dir)
+    shutil.copytree(temp_dir, output_dir)
 
     # Write package.json
     with open(os.path.join(output_dir, "package.json"), "w") as file:
-        file.write(PACKAGE_JSON_TEMPLATE.format(name=name.lower()))
+        file.write(
+            PACKAGE_JSON_TEMPLATE.format(
+                name=name.lower(), dev_dependencies=dev_dependencies
+            )
+        )
 
     # Write node index file
     with open(os.path.join(output_dir, "src", "index.ts"), "w") as file:
@@ -127,15 +173,23 @@ def create_plugin_files(api_spec, name, output_dir):
         file.write(NODE_TEMPLATE.format(name=name, properties=node_properties))
 
     # Write credentials file
-    with open(
-        os.path.join(output_dir, "src", "credentials", f"{name}Api.credentials.ts"), "w"
-    ) as file:
+    credentials_dir = os.path.join(output_dir, "src", "credentials")
+    os.makedirs(credentials_dir, exist_ok=True)
+    with open(os.path.join(credentials_dir, f"{name}Api.credentials.ts"), "w") as file:
         file.write(CREDENTIALS_TEMPLATE.format(name=name))
+
+
+def validate_node_name(ctx, param, value):
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", value):
+        raise click.BadParameter(
+            "NODE_NAME should start with a letter or underscore and contain only letters, numbers, and underscores."
+        )
+    return value
 
 
 @click.command()
 @click.argument("openapi_file", type=click.Path(exists=True))
-@click.argument("node_name", type=str)
+@click.argument("node_name", type=str, callback=validate_node_name)
 @click.option(
     "--output_dir",
     type=click.Path(),
@@ -152,8 +206,10 @@ def generate_n8n_plugin(openapi_file, node_name, output_dir):
     if output_dir is None:
         output_dir = f"./{node_name}"
 
-    api_spec = load_openapi_spec(openapi_file)
-    create_plugin_files(api_spec, node_name, output_dir)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        clone_starter_repo(temp_dir)
+        api_spec = load_openapi_spec(openapi_file)
+        create_plugin_files(api_spec, node_name, output_dir, temp_dir)
     click.echo(f"Generated n8n node plugin saved to {output_dir}")
 
 
