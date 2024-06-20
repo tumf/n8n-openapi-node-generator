@@ -6,109 +6,11 @@ import tempfile
 import click
 import git
 from openapi_spec_validator import validate_spec
-
-# Templates for various files
-PACKAGE_JSON_TEMPLATE = """
-{{
-  "name": "n8n-nodes-{name}",
-  "version": "0.1.0",
-  "description": "n8n nodes for {name} API",
-  "keywords": [
-    "n8n-community-node-package",
-    "n8n-openapi-node-plugin-generator"
-  ],
-  "license": "MIT",
-  "homepage": "",
-  "author": {{
-    "name": "",
-    "email": ""
-  }},
-  "repository": {{
-    "type": "git",
-    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
-  }},
-  "main": "index.js",
-  "scripts": {{
-    "build": "tsc && gulp build:icons",
-    "dev": "tsc --watch",
-    "format": "prettier nodes credentials --write",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json"
-  }},
-  "files": [
-    "dist"
-  ],
-  "n8n": {{
-    "n8nNodesApiVersion": 1,
-    "credentials": [
-      "dist/credentials/{name}.credentials.js"
-    ],
-    "nodes": [
-      "dist/nodes/{name}/{name}.node.js"
-    ]
-  }},
-  "devDependencies": {dev_dependencies},
-  "peerDependencies": {{
-    "n8n-workflow": "*"
-  }}
-}}
-"""
-
-NODE_INDEX_TEMPLATE = """
-import {{ INodeType, INodeTypeBaseDescription }} from 'n8n-workflow';
-import {{ {name} }} from './nodes/{name}/{name}.node';
-
-export const nodeTypes: INodeTypeBaseDescription[] = [
-	{name},
-];
-"""
-
-NODE_TEMPLATE = """
-import {{ IExecuteFunctions }} from 'n8n-core';
-import {{ INodeExecutionData, INodeType, INodeTypeDescription }} from 'n8n-workflow';
-
-export class {name} implements INodeType {{
-	description: INodeTypeDescription = {{
-		displayName: '{name}',
-		name: '{name}',
-		icon: 'file:{name}.svg',
-		group: ['transform'],
-		version: 1,
-		description: 'Consume {name} API',
-		defaults: {{
-			name: '{name}',
-		}},
-		inputs: ['main'],
-		outputs: ['main'],
-		properties: [
-			{properties}
-		],
-	}};
-
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {{
-		// Implementation of the node's execution
-		return [[]];
-	}}
-}}
-"""
-
-CREDENTIALS_TEMPLATE = """
-import {{ ICredentialType, INodeProperties }} from 'n8n-workflow';
-
-export class {name}Api implements ICredentialType {{
-	name = '{name}Api';
-	displayName = '{name} API';
-	properties: INodeProperties[] = [
-		{{
-			displayName: 'API Key',
-			name: 'apiKey',
-			type: 'string',
-			default: '',
-		}},
-	];
-}}
-"""
+from templates import (
+    PACKAGE_JSON_TEMPLATE,
+    NODE_TEMPLATE,
+    CREDENTIALS_TEMPLATE,
+)
 
 
 def load_openapi_spec(file_path):
@@ -162,18 +64,14 @@ def create_plugin_files(api_spec, name, output_dir, temp_dir):
             )
         )
 
-    # Write node index file
-    with open(os.path.join(output_dir, "src", "index.ts"), "w") as file:
-        file.write(NODE_INDEX_TEMPLATE.format(name=name))
-
     # Write node file
-    node_dir = os.path.join(output_dir, "src", "nodes", name)
+    node_dir = os.path.join(output_dir, "", "nodes", name)
     os.makedirs(node_dir, exist_ok=True)
     with open(os.path.join(node_dir, f"{name}.node.ts"), "w") as file:
         file.write(NODE_TEMPLATE.format(name=name, properties=node_properties))
 
     # Write credentials file
-    credentials_dir = os.path.join(output_dir, "src", "credentials")
+    credentials_dir = os.path.join(output_dir, "", "credentials")
     os.makedirs(credentials_dir, exist_ok=True)
     with open(os.path.join(credentials_dir, f"{name}Api.credentials.ts"), "w") as file:
         file.write(CREDENTIALS_TEMPLATE.format(name=name))
