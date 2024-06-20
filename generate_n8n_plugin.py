@@ -135,16 +135,23 @@ def create_plugin_files(api_spec, name, output_dir):
 
 @click.command()
 @click.argument("openapi_file", type=click.Path(exists=True))
-@click.argument("output_dir", type=click.Path())
 @click.argument("node_name", type=str)
-def generate_n8n_plugin(openapi_file, output_dir, node_name):
+@click.option(
+    "--output_dir",
+    type=click.Path(),
+    default=None,
+    help="Directory to save the generated plugin files. Defaults to ./{NODE_NAME}",
+)
+def generate_n8n_plugin(openapi_file, node_name, output_dir):
     """
     Generate n8n community node plugin from OpenAPI specification.
 
     OPENAPI_FILE: Path to the OpenAPI JSON file.
-    OUTPUT_DIR: Directory to save the generated plugin files.
     NODE_NAME: Name of the n8n node.
     """
+    if output_dir is None:
+        output_dir = f"./{node_name}"
+
     api_spec = load_openapi_spec(openapi_file)
     create_plugin_files(api_spec, node_name, output_dir)
     click.echo(f"Generated n8n node plugin saved to {output_dir}")
